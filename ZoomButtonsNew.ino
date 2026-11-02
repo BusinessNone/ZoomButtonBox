@@ -44,22 +44,31 @@
 #define NO_LED 99
 
 // --- Pin mapping ----------------------------------------------------------
+// Four Seeed Grove Red LED Button modules on the Grove Shield for XIAO.
+// On each module the yellow wire (SIG1) drives the LED (HIGH = on) and the
+// white wire (SIG2) is the button (LOW = pressed, pulled up). On a shield
+// connector labelled Dn, SIG1 is pin Dn and SIG2 is pin D(n+1).
+//
+//   Function      Shield connector     LED pin   Button pin
+//   Mute          D0                   0         1
+//   Raise hand    D2                   2         3
+//   Video         I2C (SDA4/SCL5)      5         4
+//   Full screen   UART (TX6/RX7)       7         6
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   2
-#define BTN_VIDEOTOGGLE 6
-#define BTN_FULLSCREEN  8
-// Not implemented yet (left commented out; they all shared placeholder pin 10):
-//#define BTN_GALLERVIEW  10
-//#define BTN_SPEAKERVIEW 10
-//#define BTN_MUTEALL     10
-//#define BTN_SHARE       10
+#define BTN_RAISEHAND   3
+#define BTN_VIDEOTOGGLE 4
+#define BTN_FULLSCREEN  6
+// Not implemented yet (left commented out):
+//#define BTN_GALLERVIEW
+//#define BTN_SPEAKERVIEW
+//#define BTN_MUTEALL
+//#define BTN_SHARE
 
-// Digital pin driving each button's indicator LED. All NO_LED by default;
-// set to real output pins to enable feedback.
-#define LED_MUTE        NO_LED
-#define LED_RAISEHAND   NO_LED
-#define LED_VIDEOTOGGLE NO_LED
-#define LED_FULLSCREEN  NO_LED
+// Digital pin driving each button's indicator LED (NO_LED to disable).
+#define LED_MUTE        0
+#define LED_RAISEHAND   2
+#define LED_VIDEOTOGGLE 5
+#define LED_FULLSCREEN  7
 
 // One row per button: its pin, its LED pin, and the key sent with Alt.
 // Keeping the three together means a button, its LED and its shortcut can

@@ -12,24 +12,33 @@ on-screen controls.
 
 | Requirement | Notes |
 |-------------|-------|
-| **Board** | A **Seeed Studio XIAO (SAMD21)**. It has native USB, so it can act as a keyboard. |
-| **Buttons** | 4 momentary push buttons, each wired between a digital pin and **GND**. No external resistors needed: the firmware uses the chip's internal pull-ups. |
-| **LEDs** | Optional. The code supports a per-button indicator LED but ships with all of them disabled, so the box works fine without any. |
+| **Board** | A **Seeed Studio XIAO (SAMD21)** on a **Grove Shield for Seeeduino XIAO**. It has native USB, so it can act as a keyboard. |
+| **Buttons** | 4 **Grove Red LED Button** modules. Each has a button and a red LED. |
 
-### Default pin wiring
+### How the Grove LED Button works
 
-Pin numbers are Arduino pin numbers, so `1` is XIAO pin D1.
+Each module has two signals on its Grove cable. The yellow wire (SIG1) drives
+the LED (HIGH = on). The white wire (SIG2) is the button, pulled up on the
+module and pulled LOW when pressed. On a shield connector labelled `Dn`, SIG1
+is pin `Dn` and SIG2 is pin `D(n+1)`.
 
-| Function | Pin | Zoom shortcut sent |
-|----------|-----|--------------------|
-| Mute / unmute audio | `1` | `Alt + A` |
-| Raise / lower hand | `2` | `Alt + Y` |
-| Start / stop video | `6` | `Alt + V` |
-| Enter / exit full screen | `8` | `Alt + F` |
+### Default wiring
 
-> Pins 6 and 8 are the XIAO's UART TX and SPI clock pins. They work as plain
-> buttons here, but you can move any button to another pin by changing its
-> `BTN_*` define.
+Pin numbers are Arduino pin numbers, so `3` is XIAO pin D3. The four connectors
+below are the ones that don't share pins.
+
+| Function | Shield connector | LED pin | Button pin | Zoom shortcut sent |
+|----------|------------------|---------|------------|--------------------|
+| Mute / unmute audio | D0 | `0` | `1` | `Alt + A` |
+| Raise / lower hand | D2 | `2` | `3` | `Alt + Y` |
+| Start / stop video | I2C (SDA 4 / SCL 5) | `5` | `4` | `Alt + V` |
+| Enter / exit full screen | UART (TX 6 / RX 7) | `7` | `6` | `Alt + F` |
+
+> The I2C and UART connectors are used as plain digital pins here, which is
+> fine as long as nothing else uses I2C or the hardware UART.
+>
+> The XIAO's pins are 3.3V only. The Grove modules accept 3.3V or 5V, so
+> power them from the shield's 3V3 pins.
 >
 > The shortcuts are the **Windows** Zoom defaults. On macOS the key
 > combinations differ, so you'd change the keys in the sketch (see below).
@@ -71,9 +80,9 @@ Pins, timing and the LED sentinel live in `#define`s at the top:
 #define DEBOUNCE_MS 30        // a pin must be stable this long to count
 
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   2
-#define BTN_VIDEOTOGGLE 6
-#define BTN_FULLSCREEN  8
+#define BTN_RAISEHAND   3
+#define BTN_VIDEOTOGGLE 4
+#define BTN_FULLSCREEN  6
 
 #define NO_LED 99             // sentinel: "this button has no LED"
 ```
@@ -145,8 +154,7 @@ held.
   `buttons[]` (e.g. swap `'a'` for the key your app uses).
 - **Different / more buttons:** add a `BTN_*` define (and an `LED_*` define)
   and add one row to `buttons[]`. Nothing else needs to change.
-- **Enable LEDs:** point the `LED_*` defines at real output pins (instead of
-  `NO_LED`).
+- **Disable an LED:** set its `LED_*` define to `NO_LED`.
 - **LED timeout:** change `OFF_DELAY` (milliseconds).
 
 ### Not implemented yet
