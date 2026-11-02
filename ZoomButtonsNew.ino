@@ -1,17 +1,14 @@
 /*
  * ZoomButtonsNew.ino
  * ------------------------------------------------------------------------
- * Firmware for a small physical "Zoom button box" built on an Arduino board
- * that exposes native USB HID (e.g. Leonardo, Micro, or Pro Micro with an
- * ATmega32U4). Each momentary push button on the box triggers a Zoom
+ * Firmware for a small physical "Zoom button box" built on a Seeed Studio
+ * XIAO (ATSAMD21, native USB). Each momentary push button on the box triggers a Zoom
  * keyboard shortcut, so a meeting can be controlled without touching the
  * on-screen controls.
  *
  * How it works
- *   - The board enumerates on the host computer as a USB "boot" keyboard
- *     via the HID-Project library (BootKeyboard). Boot keyboards are
- *     recognized very early by the host, which makes the box work reliably
- *     even at BIOS/login screens.
+ *   - The board enumerates on the host computer as a USB keyboard via the
+ *     standard Arduino Keyboard library.
  *   - Buttons are wired between a digital pin and ground and read with the
  *     internal pull-up resistor (INPUT_PULLUP): the pin reads HIGH when the
  *     button is open and LOW when pressed.
@@ -33,7 +30,7 @@
  * ------------------------------------------------------------------------
  */
 
-#include <HID-Project.h>   // Provides BootKeyboard for native USB HID output
+#include <Keyboard.h>   // Arduino USB HID keyboard (native USB on the XIAO SAMD21)
 
 // How long (in milliseconds) a button's LED stays lit after a press before
 // it is automatically turned off. 180000 ms = 3 minutes.
@@ -70,14 +67,14 @@
 struct Button {
   uint8_t pin;
   uint8_t ledPin;
-  KeyboardKeycode key;
+  char key;
 };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   KEY_Y },  // Alt + Y : raise / lower hand
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, KEY_V },  // Alt + V : start / stop video
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  KEY_F },  // Alt + F : enter / exit full screen
-  { BTN_MUTE,        LED_MUTE,        KEY_A },  // Alt + A : mute / unmute audio
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y' },  // Alt + Y : raise / lower hand
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v' },  // Alt + V : start / stop video
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f' },  // Alt + F : enter / exit full screen
+  { BTN_MUTE,        LED_MUTE,        'a' },  // Alt + A : mute / unmute audio
 };
 const uint8_t NUMBER_OF_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
@@ -100,12 +97,12 @@ void ledOff(uint8_t parPin){
 
 // Type Alt+<key> on the host: hold Alt, tap the key, release Alt. The small
 // delays give the host time to register the modifier and key.
-void sendAltShortcut(KeyboardKeycode parKey){
-  BootKeyboard.press(KEY_LEFT_ALT);
+void sendAltShortcut(char parKey){
+  Keyboard.press(KEY_LEFT_ALT);
   delay(50);
-  BootKeyboard.write(parKey);
+  Keyboard.write(parKey);
   delay(100);
-  BootKeyboard.release(KEY_LEFT_ALT);
+  Keyboard.release(KEY_LEFT_ALT);
 }
 
 // Called once per debounced press.
@@ -160,7 +157,7 @@ void setup() {
     Serial.print("=");
     Serial.println(pressed ? 0 : 1);
   }
-  BootKeyboard.begin();   // Begin acting as a USB HID boot keyboard
+  Keyboard.begin();   // Begin acting as a USB HID keyboard
 }
 
 // loop(): scan buttons without blocking, manage LED timers, send shortcuts.

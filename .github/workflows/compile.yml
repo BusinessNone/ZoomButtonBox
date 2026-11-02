@@ -12,11 +12,13 @@ jobs:
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install AVR core and HID-Project library
+      - name: Install Seeed SAMD core and Keyboard library
         run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
           arduino-cli core update-index
-          arduino-cli core install arduino:avr
-          arduino-cli lib install "HID-Project"
+          arduino-cli core install Seeeduino:samd
+          arduino-cli lib install Keyboard
 
       # arduino-cli requires the sketch folder to match the .ino name.
       - name: Stage sketch
@@ -24,9 +26,5 @@ jobs:
           mkdir -p build/ZoomButtonsNew
           cp ZoomButtonsNew.ino build/ZoomButtonsNew/
 
-      # Boards with native USB HID (ATmega32U4), per the README.
-      - name: Compile for Leonardo
-        run: arduino-cli compile --fqbn arduino:avr:leonardo --warnings all build/ZoomButtonsNew
-
-      - name: Compile for Micro
-        run: arduino-cli compile --fqbn arduino:avr:micro --warnings all build/ZoomButtonsNew
+      - name: Compile for Seeed XIAO (SAMD21)
+        run: arduino-cli compile --fqbn Seeeduino:samd:seeed_XIAO_m0 --warnings all build/ZoomButtonsNew

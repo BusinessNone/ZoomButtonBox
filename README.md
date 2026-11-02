@@ -12,11 +12,13 @@ on-screen controls.
 
 | Requirement | Notes |
 |-------------|-------|
-| **Board** | An Arduino with native USB HID — ATmega32U4-based, e.g. **Leonardo, Micro, or Pro Micro**. (An Uno/Nano will *not* work; their USB chip can't act as a keyboard.) |
-| **Buttons** | 4 momentary push buttons, each wired between a digital pin and **GND**. No external resistors needed — the firmware uses the chip's internal pull-ups. |
+| **Board** | A **Seeed Studio XIAO (SAMD21)**. It has native USB, so it can act as a keyboard. |
+| **Buttons** | 4 momentary push buttons, each wired between a digital pin and **GND**. No external resistors needed: the firmware uses the chip's internal pull-ups. |
 | **LEDs** | Optional. The code supports a per-button indicator LED but ships with all of them disabled, so the box works fine without any. |
 
 ### Default pin wiring
+
+Pin numbers are Arduino pin numbers, so `1` is XIAO pin D1.
 
 | Function | Pin | Zoom shortcut sent |
 |----------|-----|--------------------|
@@ -25,6 +27,10 @@ on-screen controls.
 | Start / stop video | `6` | `Alt + V` |
 | Enter / exit full screen | `8` | `Alt + F` |
 
+> Pins 6 and 8 are the XIAO's UART TX and SPI clock pins. They work as plain
+> buttons here, but you can move any button to another pin by changing its
+> `BTN_*` define.
+>
 > The shortcuts are the **Windows** Zoom defaults. On macOS the key
 > combinations differ, so you'd change the keys in the sketch (see below).
 
@@ -33,11 +39,15 @@ on-screen controls.
 ## Software setup
 
 1. Install the [Arduino IDE](https://www.arduino.cc/en/software).
-2. Install the **HID-Project** library (Library Manager → search
-   "HID-Project" by NicoHood). This provides `BootKeyboard`.
-3. Open [`ZoomButtonsNew.ino`](./ZoomButtonsNew.ino).
-4. Select your board (e.g. *Arduino Leonardo*) and the right port.
-5. Upload. The box now enumerates as a USB keyboard.
+2. In File > Preferences, add this URL to "Additional boards manager URLs":
+   `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
+3. Install **Seeed SAMD Boards** from the Boards Manager, then select
+   **Seeed Studio XIAO** under Tools > Board.
+4. Install the **Keyboard** library (Library Manager, by Arduino).
+5. Open [`ZoomButtonsNew.ino`](./ZoomButtonsNew.ino) and upload. The box now
+   enumerates as a USB keyboard.
+
+CI compiles the sketch for the XIAO on every push.
 
 Open the Serial Monitor at **9600 baud** to see debug output (startup button
 states and a line each time a button is pressed).
@@ -46,12 +56,11 @@ states and a line each time a button is pressed).
 
 ## How the logic works
 
-### 1. USB HID boot keyboard
+### 1. USB HID keyboard
 
-The sketch includes `HID-Project.h` and uses `BootKeyboard`. A *boot*
-keyboard is the simplest HID keyboard profile — the one a PC recognizes at
-the BIOS/login screen — which makes the device work reliably the instant it's
-plugged in. `BootKeyboard.begin()` in `setup()` starts it.
+The sketch includes `Keyboard.h`, the standard Arduino keyboard library, which
+the XIAO's native USB turns into a real keyboard. `Keyboard.begin()` in
+`setup()` starts it.
 
 ### 2. Configuration via `#define`
 
@@ -76,13 +85,13 @@ everywhere.
 ### 3. One table drives everything
 
 ```cpp
-struct Button { uint8_t pin; uint8_t ledPin; KeyboardKeycode key; };
+struct Button { uint8_t pin; uint8_t ledPin; char key; };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   KEY_Y },
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, KEY_V },
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  KEY_F },
-  { BTN_MUTE,        LED_MUTE,        KEY_A },
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y' },
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v' },
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f' },
+  { BTN_MUTE,        LED_MUTE,        'a' },
 };
 ```
 
@@ -102,7 +111,7 @@ Runs once at power-up:
 3. **Second pass:** turns the LEDs back off, clears the timers, records the
    resting state of every button (a button held at boot must be released
    before it can fire) and prints it over serial (`1` = released).
-4. Calls `BootKeyboard.begin()` to go live as a keyboard.
+4. Calls `Keyboard.begin()` to go live as a keyboard.
 
 ### 5. `loop()` - the scan cycle
 
@@ -132,8 +141,8 @@ held.
 
 ## Customizing
 
-- **Different shortcut:** change the `KEY_*` value in that button's row of
-  `buttons[]` (e.g. swap `KEY_A` for the key your app uses).
+- **Different shortcut:** change the key character in that button's row of
+  `buttons[]` (e.g. swap `'a'` for the key your app uses).
 - **Different / more buttons:** add a `BTN_*` define (and an `LED_*` define)
   and add one row to `buttons[]`. Nothing else needs to change.
 - **Enable LEDs:** point the `LED_*` defines at real output pins (instead of
