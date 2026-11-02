@@ -55,106 +55,96 @@ plugged in. `BootKeyboard.begin()` in `setup()` starts it.
 
 ### 2. Configuration via `#define`
 
-All wiring lives in `#define`s at the top so nothing is hard-coded deeper in
-the logic:
+Pins, timing and the LED sentinel live in `#define`s at the top:
 
 ```cpp
-#define NUMBER_OF_BUTTONS 4
-#define OFF_DELAY 180000   // LED auto-off timeout: 3 minutes
+#define OFF_DELAY   180000UL  // LED auto-off timeout: 3 minutes
+#define DEBOUNCE_MS 30        // a pin must be stable this long to count
 
 #define BTN_MUTE        1
 #define BTN_RAISEHAND   2
 #define BTN_VIDEOTOGGLE 6
 #define BTN_FULLSCREEN  8
 
-#define NO_LED 99          // sentinel: "this button has no LED"
+#define NO_LED 99             // sentinel: "this button has no LED"
 ```
 
 `NO_LED` is a magic pin value meaning "no LED here". The LED helpers ignore
 it, so LEDs are entirely optional without sprinkling `if (hasLed)` checks
 everywhere.
 
-### 3. The arrays that drive the loop
+### 3. One table drives everything
 
 ```cpp
-int buttons[NUMBER_OF_BUTTONS] = {BTN_RAISEHAND, BTN_VIDEOTOGGLE, BTN_FULLSCREEN, BTN_MUTE};
-int leds[NUMBER_OF_BUTTONS]    = {LED_RAISEHAND, LED_VIDEOTOGGLE, LED_MUTE, LED_FULLSCREEN};
-uint32_t ledsOnUntil[NUMBER_OF_BUTTONS];
+struct Button { uint8_t pin; uint8_t ledPin; KeyboardKeycode key; };
+
+const Button buttons[] = {
+  { BTN_RAISEHAND,   LED_RAISEHAND,   KEY_Y },
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, KEY_V },
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  KEY_F },
+  { BTN_MUTE,        LED_MUTE,        KEY_A },
+};
 ```
 
-- `buttons[]` — the pins the main loop scans, in order.
-- `leds[]` — the LED pin paired with each button (all `NO_LED` by default).
-- `ledsOnUntil[]` — per-button "turn the LED off at this `millis()` time";
-  `0` means the LED is off / no timer running.
+Each row holds a button's pin, its LED pin and the key sent with Alt, so the
+three can't drift out of step. `NUMBER_OF_BUTTONS` is computed from the table.
+Small parallel arrays hold the runtime state: debounced pressed state, last raw
+reading and its timestamp, whether the LED timer is running, and when it expires.
 
 ### 4. `setup()`
 
 Runs once at power-up:
 
 1. Starts serial at 9600 baud.
-2. **First pass:** lights each LED and sets each button pin to
-   `INPUT_PULLUP`, with a 100 ms gap so the LEDs "walk" as a quick self-test.
-3. **Second pass:** turns the LEDs back off, clears each auto-off timer, and
-   prints the resting state of every button over serial (`1` = released).
+2. **First pass:** lights each LED (configured as an output) and sets each
+   button pin to `INPUT_PULLUP`, with a 100 ms gap so the LEDs "walk" as a
+   quick self-test.
+3. **Second pass:** turns the LEDs back off, clears the timers, records the
+   resting state of every button (a button held at boot must be released
+   before it can fire) and prints it over serial (`1` = released).
 4. Calls `BootKeyboard.begin()` to go live as a keyboard.
 
-### 5. `loop()` — the scan cycle
+### 5. `loop()` - the scan cycle
 
-For every button, on every pass:
+The loop never blocks waiting for a button, so every button and LED timer is
+serviced on every pass. For each button:
 
-**a. LED auto-off.** If a button's timer (`ledsOnUntil[i]`) is running and its
-deadline has passed (`< millis()`), turn the LED off and clear the timer. This
-is what makes a lit LED extinguish itself after `OFF_DELAY` (3 min).
+**a. LED auto-off.** If the LED timer is running and its deadline has passed,
+turn the LED off. The comparison uses `(int32_t)(now - deadline) >= 0`, which
+stays correct when `millis()` wraps after about 49.7 days.
 
-**b. Press detection.** With `INPUT_PULLUP`, a pin reads **LOW** while its
-button is held (the button connects the pin to ground). When a press is
-detected:
+**b. Debounced press detection.** With `INPUT_PULLUP`, a pin reads **LOW**
+while its button is held. A change only counts once the raw reading has been
+stable for `DEBOUNCE_MS`, so contact bounce on press or release is ignored.
+The shortcut fires once, on the press edge, no matter how long the button is
+held.
 
-- **Toggle the LED timer** — if the LED was already on, turn it off; otherwise
-  light it and arm the `OFF_DELAY` countdown.
-- **Send the shortcut** via a `switch` on the button's *pin number* (not the
-  loop index — keying on the pin keeps each case readable):
+**c. On press** (`onPress()`):
 
-  ```cpp
-  case BTN_MUTE:
-    BootKeyboard.press(KEY_LEFT_ALT);   // hold Alt
-    delay(50);
-    BootKeyboard.write(KEY_A);          // tap A
-    delay(100);
-    BootKeyboard.release(KEY_LEFT_ALT); // release Alt
-    break;
-  ```
-
-  Every case follows the same *press-modifier → tap-key → release-modifier*
-  pattern, with small `delay()`s so the host reliably registers the
-  combination. An unmapped pin hits `default` and just logs "Unknown case".
-
-**c. Debounce / one-press-one-action.** After sending, the code blocks in a
-tight `while (digitalRead(...) == LOW) delay(10);` loop until the button is
-released. This both debounces the switch and guarantees a single press sends
-exactly one shortcut, no matter how long it's held.
+- **Toggle the LED** - if it was lit, turn it off; otherwise light it and arm
+  the `OFF_DELAY` countdown. The LED tracks button presses, not Zoom's real
+  state (HID is one-way), so it can drift if you change Zoom another way.
+- **Send the shortcut** with `sendAltShortcut(key)`: press Alt, wait 50 ms, tap
+  the key, wait 100 ms, release Alt. The delays give the host time to register
+  the combination.
 
 ---
 
 ## Customizing
 
-- **Different shortcut:** change the `KEY_*` value inside the relevant
-  `case` (e.g. swap `KEY_A` for the key your app uses).
-- **Different / more buttons:** bump `NUMBER_OF_BUTTONS`, add a `BTN_*`
-  define, add it to `buttons[]`, and add a matching `case` in the `switch`.
+- **Different shortcut:** change the `KEY_*` value in that button's row of
+  `buttons[]` (e.g. swap `KEY_A` for the key your app uses).
+- **Different / more buttons:** add a `BTN_*` define (and an `LED_*` define)
+  and add one row to `buttons[]`. Nothing else needs to change.
 - **Enable LEDs:** point the `LED_*` defines at real output pins (instead of
-  `NO_LED`) and make sure the `leds[]` order lines up with `buttons[]`.
+  `NO_LED`).
 - **LED timeout:** change `OFF_DELAY` (milliseconds).
 
-### Known rough edges
+### Not implemented yet
 
-- **`leds[]` is not index-aligned with `buttons[]`.** Index 2's button is
-  `BTN_FULLSCREEN` but its LED entry is `LED_MUTE`, and index 3 is the
-  reverse. This is harmless today because every LED is `NO_LED`, but the array
-  should be re-ordered before wiring real LEDs.
-- **`BTN_GALLERVIEW` / `BTN_SPEAKERVIEW` / `BTN_MUTEALL`** are defined as
-  placeholder pin `10` but aren't in `buttons[]` or the `switch` — they're
-  stubs for features that aren't implemented yet.
+Gallery view, speaker view, mute-all and share were stubbed in earlier
+versions (all on a placeholder pin 10). They are left as commented-out
+defines in the sketch until they get real pins and `buttons[]` rows.
 
 ---
 
