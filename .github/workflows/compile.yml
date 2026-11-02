@@ -1,0 +1,32 @@
+name: Compile sketch
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install AVR core and HID-Project library
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli lib install "HID-Project"
+
+      # arduino-cli requires the sketch folder to match the .ino name.
+      - name: Stage sketch
+        run: |
+          mkdir -p build/ZoomButtonsNew
+          cp ZoomButtonsNew.ino build/ZoomButtonsNew/
+
+      # Boards with native USB HID (ATmega32U4), per the README.
+      - name: Compile for Leonardo
+        run: arduino-cli compile --fqbn arduino:avr:leonardo --warnings all build/ZoomButtonsNew
+
+      - name: Compile for Micro
+        run: arduino-cli compile --fqbn arduino:avr:micro --warnings all build/ZoomButtonsNew
