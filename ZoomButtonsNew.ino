@@ -14,7 +14,8 @@
  *     button is open and LOW when pressed.
  *   - When a button is pressed the matching Zoom shortcut (Alt + a letter)
  *     is typed onto the host. An optional per-button LED can be lit to give
- *     visual feedback; the LED auto-extinguishes after OFF_DELAY.
+ *     visual feedback; the LED auto-extinguishes after OFF_DELAY, and the
+ *     Mute button also re-sends Alt + A then to put the user back on mute.
  *
  * Zoom shortcuts sent (Windows defaults):
  *   Mute/unmute audio ......... Alt + A
@@ -77,13 +78,14 @@ struct Button {
   uint8_t pin;
   uint8_t ledPin;
   char key;
+  bool remuteOnTimeout;   // resend the shortcut when the OFF_DELAY timer expires
 };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   'y' },  // Alt + Y : raise / lower hand
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v' },  // Alt + V : start / stop video
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f' },  // Alt + F : enter / exit full screen
-  { BTN_MUTE,        LED_MUTE,        'a' },  // Alt + A : mute / unmute audio
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },  // Alt + Y : raise / lower hand
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },  // Alt + V : start / stop video
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },  // Alt + F : enter / exit full screen
+  { BTN_MUTE,        LED_MUTE,        'a', true  },  // Alt + A : mute / unmute audio (auto re-mutes)
 };
 const uint8_t NUMBER_OF_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
@@ -175,9 +177,16 @@ void loop() {
   for (uint8_t i = 0; i < NUMBER_OF_BUTTONS ; i++)
   {
     // --- LED auto-off (wraparound-safe millis() comparison) ---
+    // For Mute, a lit LED means "unmuted": if nobody presses again within
+    // OFF_DELAY, send the shortcut once more to put them back on mute.
     if (ledLit[i] && (int32_t)(now - ledOffAtMs[i]) >= 0){
       ledLit[i]=false;
       ledOff(buttons[i].ledPin);
+      if (buttons[i].remuteOnTimeout){
+        Serial.print("\nAuto re-mute on pin ");
+        Serial.println(buttons[i].pin);
+        sendAltShortcut(buttons[i].key);
+      }
     }
 
     // --- Debounced edge detection ---

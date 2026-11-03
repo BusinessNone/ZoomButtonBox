@@ -94,13 +94,13 @@ everywhere.
 ### 3. One table drives everything
 
 ```cpp
-struct Button { uint8_t pin; uint8_t ledPin; char key; };
+struct Button { uint8_t pin; uint8_t ledPin; char key; bool remuteOnTimeout; };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   'y' },
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v' },
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f' },
-  { BTN_MUTE,        LED_MUTE,        'a' },
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },
+  { BTN_MUTE,        LED_MUTE,        'a', true  },
 };
 ```
 
@@ -142,6 +142,11 @@ held.
 - **Toggle the LED** - if it was lit, turn it off; otherwise light it and arm
   the `OFF_DELAY` countdown. The LED tracks button presses, not Zoom's real
   state (HID is one-way), so it can drift if you change Zoom another way.
+- **Auto re-mute** - for the Mute button, a lit LED means "unmuted". If it
+  isn't pressed again within `OFF_DELAY` (3 minutes), the sketch sends
+  `Alt + A` once more to put you back on mute. This assumes you start muted:
+  the first press must unmute you. If Zoom is unmuted when the box starts, the
+  first press mutes you and the timer would unmute you 3 minutes later.
 - **Send the shortcut** with `sendAltShortcut(key)`: press Alt, wait 50 ms, tap
   the key, wait 100 ms, release Alt. The delays give the host time to register
   the combination.
@@ -155,7 +160,8 @@ held.
 - **Different / more buttons:** add a `BTN_*` define (and an `LED_*` define)
   and add one row to `buttons[]`. Nothing else needs to change.
 - **Disable an LED:** set its `LED_*` define to `NO_LED`.
-- **LED timeout:** change `OFF_DELAY` (milliseconds).
+- **Auto re-mute / LED timeout:** change `OFF_DELAY` (milliseconds). To
+  turn auto re-mute off, set the Mute row's last field in `buttons[]` to `false`.
 
 ### Not implemented yet
 
