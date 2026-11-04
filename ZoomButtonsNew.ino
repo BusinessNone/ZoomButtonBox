@@ -16,6 +16,9 @@
  *     is typed onto the host. An optional per-button LED can be lit to give
  *     visual feedback; the LED auto-extinguishes after OFF_DELAY, and the
  *     Mute button also re-sends Alt + A then to put the user back on mute.
+ *   - The box cannot read Zoom's real mute state (USB HID is one-way). It
+ *     assumes it starts muted. If it ever disagrees with Zoom, hold Mute for
+ *     2 seconds to tell it "Zoom is muted now" (no keystroke is sent).
  *
  * Zoom shortcuts sent (Windows defaults):
  *   Mute/unmute audio ......... Alt + A
@@ -39,6 +42,10 @@
 
 // A press/release is accepted only after the pin has been stable this long.
 #define DEBOUNCE_MS 30
+
+// Holding a resync button (Mute) this long tells the box "Zoom is muted right
+// now" WITHOUT sending a keystroke. Use it if the box and Zoom ever disagree.
+#define RESYNC_HOLD_MS 2000
 
 // Sentinel pin value meaning "this button has no LED". ledOn()/ledOff()
 // ignore any pin equal to NO_LED, so LED wiring is entirely optional.
@@ -79,13 +86,14 @@ struct Button {
   uint8_t ledPin;
   char key;
   bool remuteOnTimeout;   // resend the shortcut when the OFF_DELAY timer expires
+  bool holdToResync;      // hold RESYNC_HOLD_MS to reset to "muted" with no keystroke
 };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },  // Alt + Y : raise / lower hand
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },  // Alt + V : start / stop video
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },  // Alt + F : enter / exit full screen
-  { BTN_MUTE,        LED_MUTE,        'a', true  },  // Alt + A : mute / unmute audio (auto re-mutes)
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false, false },  // Alt + Y : raise / lower hand
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false, false },  // Alt + V : start / stop video
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false, false },  // Alt + F : enter / exit full screen
+  { BTN_MUTE,        LED_MUTE,        'a', true,  true  },  // Alt + A : mute / unmute audio (auto re-mutes, hold to resync)
 };
 const uint8_t NUMBER_OF_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
@@ -93,6 +101,8 @@ const uint8_t NUMBER_OF_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 bool     stablePressed[NUMBER_OF_BUTTONS];   // debounced state: true = held
 bool     lastReading[NUMBER_OF_BUTTONS];     // last raw reading
 uint32_t lastChangeMs[NUMBER_OF_BUTTONS];    // when the raw reading last changed
+uint32_t pressStartMs[NUMBER_OF_BUTTONS];    // when the current press began
+bool     holdHandled[NUMBER_OF_BUTTONS];     // this press was a resync hold (or ignored)
 bool     ledLit[NUMBER_OF_BUTTONS];          // LED timer running
 uint32_t ledOffAtMs[NUMBER_OF_BUTTONS];      // when to switch the LED off
 
@@ -135,6 +145,21 @@ void onPress(uint8_t i){
   sendAltShortcut(buttons[i].key);
 }
 
+// Tell the box that Zoom is muted right now. Sends nothing to the host, so it
+// can never flip Zoom. Clears the unmuted state and timer, then blinks the LED
+// three times as confirmation.
+void resyncMuted(uint8_t i){
+  ledLit[i]=false;
+  Serial.print("\nResync to muted on pin ");
+  Serial.println(buttons[i].pin);
+  for (uint8_t n=0; n < 3; n++){
+    ledOn(buttons[i].ledPin);
+    delay(100);
+    ledOff(buttons[i].ledPin);
+    delay(100);
+  }
+}
+
 //=========================================
 // setup(): one-time initialization
 //=========================================
@@ -161,6 +186,7 @@ void setup() {
     bool pressed = (digitalRead(buttons[i].pin)==LOW);
     // A button held at power-up must be released before it can fire.
     stablePressed[i]=pressed;
+    holdHandled[i]=true;   // a press already in progress at boot is ignored
     lastReading[i]=pressed;
     lastChangeMs[i]=millis();
 
@@ -198,7 +224,25 @@ void loop() {
     }
     if (reading != stablePressed[i] && (now - lastChangeMs[i]) >= DEBOUNCE_MS){
       stablePressed[i]=reading;
-      if (reading) onPress(i);   // fire once per press, on the press edge only
+      if (buttons[i].holdToResync){
+        // Resync buttons fire on RELEASE, so a long hold can be told apart
+        // from a normal press before any keystroke is sent.
+        if (reading){
+          pressStartMs[i]=now;
+          holdHandled[i]=false;
+        }else if (!holdHandled[i]){
+          onPress(i);
+        }
+      }else if (reading){
+        onPress(i);   // fire once per press, on the press edge only
+      }
+    }
+
+    // --- Long hold on a resync button: reset to "muted", send nothing ---
+    if (buttons[i].holdToResync && stablePressed[i] && !holdHandled[i] &&
+        (now - pressStartMs[i]) >= RESYNC_HOLD_MS){
+      holdHandled[i]=true;
+      resyncMuted(i);
     }
   }
 }
