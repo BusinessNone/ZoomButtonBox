@@ -1,23 +1,21 @@
 /*
  * ZoomButtonsNew.ino
  * ------------------------------------------------------------------------
- * Firmware for a small physical "Zoom button box" built on an Arduino board
- * that exposes native USB HID (e.g. Leonardo, Micro, or Pro Micro with an
- * ATmega32U4). Each momentary push button on the box triggers a Zoom
+ * Firmware for a small physical "Zoom button box" built on a Seeed Studio
+ * XIAO (ATSAMD21, native USB). Each momentary push button on the box triggers a Zoom
  * keyboard shortcut, so a meeting can be controlled without touching the
  * on-screen controls.
  *
  * How it works
- *   - The board enumerates on the host computer as a USB "boot" keyboard
- *     via the HID-Project library (BootKeyboard). Boot keyboards are
- *     recognized very early by the host, which makes the box work reliably
- *     even at BIOS/login screens.
+ *   - The board enumerates on the host computer as a USB keyboard via the
+ *     standard Arduino Keyboard library.
  *   - Buttons are wired between a digital pin and ground and read with the
  *     internal pull-up resistor (INPUT_PULLUP): the pin reads HIGH when the
  *     button is open and LOW when pressed.
  *   - When a button is pressed the matching Zoom shortcut (Alt + a letter)
  *     is typed onto the host. An optional per-button LED can be lit to give
- *     visual feedback; the LED auto-extinguishes after OFF_DELAY.
+ *     visual feedback; the LED auto-extinguishes after OFF_DELAY, and the
+ *     Mute button also re-sends Alt + A then to put the user back on mute.
  *
  * Zoom shortcuts sent (Windows defaults):
  *   Mute/unmute audio ......... Alt + A
@@ -33,7 +31,7 @@
  * ------------------------------------------------------------------------
  */
 
-#include <HID-Project.h>   // Provides BootKeyboard for native USB HID output
+#include <Keyboard.h>   // Arduino USB HID keyboard (native USB on the XIAO SAMD21)
 
 // How long (in milliseconds) a button's LED stays lit after a press before
 // it is automatically turned off. 180000 ms = 3 minutes.
@@ -47,22 +45,31 @@
 #define NO_LED 99
 
 // --- Pin mapping ----------------------------------------------------------
+// Four Seeed Grove Red LED Button modules on the Grove Shield for XIAO.
+// On each module the yellow wire (SIG1) drives the LED (HIGH = on) and the
+// white wire (SIG2) is the button (LOW = pressed, pulled up). On a shield
+// connector labelled Dn, SIG1 is pin Dn and SIG2 is pin D(n+1).
+//
+//   Function      Shield connector     LED pin   Button pin
+//   Mute          D0                   0         1
+//   Raise hand    D2                   2         3
+//   Video         I2C (SDA4/SCL5)      5         4
+//   Full screen   UART (TX6/RX7)       7         6
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   2
-#define BTN_VIDEOTOGGLE 6
-#define BTN_FULLSCREEN  8
-// Not implemented yet (left commented out; they all shared placeholder pin 10):
-//#define BTN_GALLERVIEW  10
-//#define BTN_SPEAKERVIEW 10
-//#define BTN_MUTEALL     10
-//#define BTN_SHARE       10
+#define BTN_RAISEHAND   3
+#define BTN_VIDEOTOGGLE 4
+#define BTN_FULLSCREEN  6
+// Not implemented yet (left commented out):
+//#define BTN_GALLERVIEW
+//#define BTN_SPEAKERVIEW
+//#define BTN_MUTEALL
+//#define BTN_SHARE
 
-// Digital pin driving each button's indicator LED. All NO_LED by default;
-// set to real output pins to enable feedback.
-#define LED_MUTE        NO_LED
-#define LED_RAISEHAND   NO_LED
-#define LED_VIDEOTOGGLE NO_LED
-#define LED_FULLSCREEN  NO_LED
+// Digital pin driving each button's indicator LED (NO_LED to disable).
+#define LED_MUTE        0
+#define LED_RAISEHAND   2
+#define LED_VIDEOTOGGLE 5
+#define LED_FULLSCREEN  7
 
 // One row per button: its pin, its LED pin, and the key sent with Alt.
 // Keeping the three together means a button, its LED and its shortcut can
@@ -70,14 +77,15 @@
 struct Button {
   uint8_t pin;
   uint8_t ledPin;
-  KeyboardKeycode key;
+  char key;
+  bool remuteOnTimeout;   // resend the shortcut when the OFF_DELAY timer expires
 };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   KEY_Y },  // Alt + Y : raise / lower hand
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, KEY_V },  // Alt + V : start / stop video
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  KEY_F },  // Alt + F : enter / exit full screen
-  { BTN_MUTE,        LED_MUTE,        KEY_A },  // Alt + A : mute / unmute audio
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },  // Alt + Y : raise / lower hand
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },  // Alt + V : start / stop video
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },  // Alt + F : enter / exit full screen
+  { BTN_MUTE,        LED_MUTE,        'a', true  },  // Alt + A : mute / unmute audio (auto re-mutes)
 };
 const uint8_t NUMBER_OF_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
@@ -100,12 +108,12 @@ void ledOff(uint8_t parPin){
 
 // Type Alt+<key> on the host: hold Alt, tap the key, release Alt. The small
 // delays give the host time to register the modifier and key.
-void sendAltShortcut(KeyboardKeycode parKey){
-  BootKeyboard.press(KEY_LEFT_ALT);
+void sendAltShortcut(char parKey){
+  Keyboard.press(KEY_LEFT_ALT);
   delay(50);
-  BootKeyboard.write(parKey);
+  Keyboard.write(parKey);
   delay(100);
-  BootKeyboard.release(KEY_LEFT_ALT);
+  Keyboard.release(KEY_LEFT_ALT);
 }
 
 // Called once per debounced press.
@@ -160,7 +168,7 @@ void setup() {
     Serial.print("=");
     Serial.println(pressed ? 0 : 1);
   }
-  BootKeyboard.begin();   // Begin acting as a USB HID boot keyboard
+  Keyboard.begin();   // Begin acting as a USB HID keyboard
 }
 
 // loop(): scan buttons without blocking, manage LED timers, send shortcuts.
@@ -169,9 +177,16 @@ void loop() {
   for (uint8_t i = 0; i < NUMBER_OF_BUTTONS ; i++)
   {
     // --- LED auto-off (wraparound-safe millis() comparison) ---
+    // For Mute, a lit LED means "unmuted": if nobody presses again within
+    // OFF_DELAY, send the shortcut once more to put them back on mute.
     if (ledLit[i] && (int32_t)(now - ledOffAtMs[i]) >= 0){
       ledLit[i]=false;
       ledOff(buttons[i].ledPin);
+      if (buttons[i].remuteOnTimeout){
+        Serial.print("\nAuto re-mute on pin ");
+        Serial.println(buttons[i].pin);
+        sendAltShortcut(buttons[i].key);
+      }
     }
 
     // --- Debounced edge detection ---

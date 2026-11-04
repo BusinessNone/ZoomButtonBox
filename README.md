@@ -12,19 +12,34 @@ on-screen controls.
 
 | Requirement | Notes |
 |-------------|-------|
-| **Board** | An Arduino with native USB HID — ATmega32U4-based, e.g. **Leonardo, Micro, or Pro Micro**. (An Uno/Nano will *not* work; their USB chip can't act as a keyboard.) |
-| **Buttons** | 4 momentary push buttons, each wired between a digital pin and **GND**. No external resistors needed — the firmware uses the chip's internal pull-ups. |
-| **LEDs** | Optional. The code supports a per-button indicator LED but ships with all of them disabled, so the box works fine without any. |
+| **Board** | A **Seeed Studio XIAO (SAMD21)** on a **Grove Shield for Seeeduino XIAO**. It has native USB, so it can act as a keyboard. |
+| **Buttons** | 4 **Grove Red LED Button** modules. Each has a button and a red LED. |
 
-### Default pin wiring
+### How the Grove LED Button works
 
-| Function | Pin | Zoom shortcut sent |
-|----------|-----|--------------------|
-| Mute / unmute audio | `1` | `Alt + A` |
-| Raise / lower hand | `2` | `Alt + Y` |
-| Start / stop video | `6` | `Alt + V` |
-| Enter / exit full screen | `8` | `Alt + F` |
+Each module has two signals on its Grove cable. The yellow wire (SIG1) drives
+the LED (HIGH = on). The white wire (SIG2) is the button, pulled up on the
+module and pulled LOW when pressed. On a shield connector labelled `Dn`, SIG1
+is pin `Dn` and SIG2 is pin `D(n+1)`.
 
+### Default wiring
+
+Pin numbers are Arduino pin numbers, so `3` is XIAO pin D3. The four connectors
+below are the ones that don't share pins.
+
+| Function | Shield connector | LED pin | Button pin | Zoom shortcut sent |
+|----------|------------------|---------|------------|--------------------|
+| Mute / unmute audio | D0 | `0` | `1` | `Alt + A` |
+| Raise / lower hand | D2 | `2` | `3` | `Alt + Y` |
+| Start / stop video | I2C (SDA 4 / SCL 5) | `5` | `4` | `Alt + V` |
+| Enter / exit full screen | UART (TX 6 / RX 7) | `7` | `6` | `Alt + F` |
+
+> The I2C and UART connectors are used as plain digital pins here, which is
+> fine as long as nothing else uses I2C or the hardware UART.
+>
+> The XIAO's pins are 3.3V only. The Grove modules accept 3.3V or 5V, so
+> power them from the shield's 3V3 pins.
+>
 > The shortcuts are the **Windows** Zoom defaults. On macOS the key
 > combinations differ, so you'd change the keys in the sketch (see below).
 
@@ -33,11 +48,15 @@ on-screen controls.
 ## Software setup
 
 1. Install the [Arduino IDE](https://www.arduino.cc/en/software).
-2. Install the **HID-Project** library (Library Manager → search
-   "HID-Project" by NicoHood). This provides `BootKeyboard`.
-3. Open [`ZoomButtonsNew.ino`](./ZoomButtonsNew.ino).
-4. Select your board (e.g. *Arduino Leonardo*) and the right port.
-5. Upload. The box now enumerates as a USB keyboard.
+2. In File > Preferences, add this URL to "Additional boards manager URLs":
+   `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
+3. Install **Seeed SAMD Boards** from the Boards Manager, then select
+   **Seeed Studio XIAO** under Tools > Board.
+4. Install the **Keyboard** library (Library Manager, by Arduino).
+5. Open [`ZoomButtonsNew.ino`](./ZoomButtonsNew.ino) and upload. The box now
+   enumerates as a USB keyboard.
+
+CI compiles the sketch for the XIAO on every push.
 
 Open the Serial Monitor at **9600 baud** to see debug output (startup button
 states and a line each time a button is pressed).
@@ -46,12 +65,11 @@ states and a line each time a button is pressed).
 
 ## How the logic works
 
-### 1. USB HID boot keyboard
+### 1. USB HID keyboard
 
-The sketch includes `HID-Project.h` and uses `BootKeyboard`. A *boot*
-keyboard is the simplest HID keyboard profile — the one a PC recognizes at
-the BIOS/login screen — which makes the device work reliably the instant it's
-plugged in. `BootKeyboard.begin()` in `setup()` starts it.
+The sketch includes `Keyboard.h`, the standard Arduino keyboard library, which
+the XIAO's native USB turns into a real keyboard. `Keyboard.begin()` in
+`setup()` starts it.
 
 ### 2. Configuration via `#define`
 
@@ -62,9 +80,9 @@ Pins, timing and the LED sentinel live in `#define`s at the top:
 #define DEBOUNCE_MS 30        // a pin must be stable this long to count
 
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   2
-#define BTN_VIDEOTOGGLE 6
-#define BTN_FULLSCREEN  8
+#define BTN_RAISEHAND   3
+#define BTN_VIDEOTOGGLE 4
+#define BTN_FULLSCREEN  6
 
 #define NO_LED 99             // sentinel: "this button has no LED"
 ```
@@ -76,13 +94,13 @@ everywhere.
 ### 3. One table drives everything
 
 ```cpp
-struct Button { uint8_t pin; uint8_t ledPin; KeyboardKeycode key; };
+struct Button { uint8_t pin; uint8_t ledPin; char key; bool remuteOnTimeout; };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   KEY_Y },
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, KEY_V },
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  KEY_F },
-  { BTN_MUTE,        LED_MUTE,        KEY_A },
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },
+  { BTN_MUTE,        LED_MUTE,        'a', true  },
 };
 ```
 
@@ -102,7 +120,7 @@ Runs once at power-up:
 3. **Second pass:** turns the LEDs back off, clears the timers, records the
    resting state of every button (a button held at boot must be released
    before it can fire) and prints it over serial (`1` = released).
-4. Calls `BootKeyboard.begin()` to go live as a keyboard.
+4. Calls `Keyboard.begin()` to go live as a keyboard.
 
 ### 5. `loop()` - the scan cycle
 
@@ -124,6 +142,11 @@ held.
 - **Toggle the LED** - if it was lit, turn it off; otherwise light it and arm
   the `OFF_DELAY` countdown. The LED tracks button presses, not Zoom's real
   state (HID is one-way), so it can drift if you change Zoom another way.
+- **Auto re-mute** - for the Mute button, a lit LED means "unmuted". If it
+  isn't pressed again within `OFF_DELAY` (3 minutes), the sketch sends
+  `Alt + A` once more to put you back on mute. This assumes you start muted:
+  the first press must unmute you. If Zoom is unmuted when the box starts, the
+  first press mutes you and the timer would unmute you 3 minutes later.
 - **Send the shortcut** with `sendAltShortcut(key)`: press Alt, wait 50 ms, tap
   the key, wait 100 ms, release Alt. The delays give the host time to register
   the combination.
@@ -132,13 +155,13 @@ held.
 
 ## Customizing
 
-- **Different shortcut:** change the `KEY_*` value in that button's row of
-  `buttons[]` (e.g. swap `KEY_A` for the key your app uses).
+- **Different shortcut:** change the key character in that button's row of
+  `buttons[]` (e.g. swap `'a'` for the key your app uses).
 - **Different / more buttons:** add a `BTN_*` define (and an `LED_*` define)
   and add one row to `buttons[]`. Nothing else needs to change.
-- **Enable LEDs:** point the `LED_*` defines at real output pins (instead of
-  `NO_LED`).
-- **LED timeout:** change `OFF_DELAY` (milliseconds).
+- **Disable an LED:** set its `LED_*` define to `NO_LED`.
+- **Auto re-mute / LED timeout:** change `OFF_DELAY` (milliseconds). To
+  turn auto re-mute off, set the Mute row's last field in `buttons[]` to `false`.
 
 ### Not implemented yet
 

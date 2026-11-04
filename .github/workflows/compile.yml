@@ -1,0 +1,30 @@
+name: Compile sketch
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Seeed SAMD core and Keyboard library
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
+          arduino-cli core update-index
+          arduino-cli core install Seeeduino:samd
+          arduino-cli lib install Keyboard
+
+      # arduino-cli requires the sketch folder to match the .ino name.
+      - name: Stage sketch
+        run: |
+          mkdir -p build/ZoomButtonsNew
+          cp ZoomButtonsNew.ino build/ZoomButtonsNew/
+
+      - name: Compile for Seeed XIAO (SAMD21)
+        run: arduino-cli compile --fqbn Seeeduino:samd:seeed_XIAO_m0 --warnings all build/ZoomButtonsNew
