@@ -94,13 +94,13 @@ everywhere.
 ### 3. One table drives everything
 
 ```cpp
-struct Button { uint8_t pin; uint8_t ledPin; char key; bool remuteOnTimeout; };
+struct Button { uint8_t pin; uint8_t ledPin; char key; bool remuteOnTimeout; bool holdToResync; };
 
 const Button buttons[] = {
-  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false },
-  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false },
-  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false },
-  { BTN_MUTE,        LED_MUTE,        'a', true  },
+  { BTN_RAISEHAND,   LED_RAISEHAND,   'y', false, false },
+  { BTN_VIDEOTOGGLE, LED_VIDEOTOGGLE, 'v', false, false },
+  { BTN_FULLSCREEN,  LED_FULLSCREEN,  'f', false, false },
+  { BTN_MUTE,        LED_MUTE,        'a', true,  true  },
 };
 ```
 
@@ -144,9 +144,16 @@ held.
   state (HID is one-way), so it can drift if you change Zoom another way.
 - **Auto re-mute** - for the Mute button, a lit LED means "unmuted". If it
   isn't pressed again within `OFF_DELAY` (3 minutes), the sketch sends
-  `Alt + A` once more to put you back on mute. This assumes you start muted:
-  the first press must unmute you. If Zoom is unmuted when the box starts, the
-  first press mutes you and the timer would unmute you 3 minutes later.
+  `Alt + A` once more to put you back on mute.
+- **Starts muted, with a resync hold** - the box can't read Zoom's real mute
+  state (USB HID is one-way), so it assumes it starts muted: the first press
+  unmutes you. Sending `Alt + A` at startup would flip Zoom instead, so the
+  box doesn't. If the box and Zoom ever disagree, **hold Mute for 2 seconds**
+  while Zoom is muted. The LED blinks three times and the box is back in sync
+  without sending any keystroke. Mute fires on release so a hold can be told
+  apart from a tap.
+  To avoid the problem at the source, turn on Zoom's *Mute my microphone when
+  joining a meeting* setting.
 - **Send the shortcut** with `sendAltShortcut(key)`: press Alt, wait 50 ms, tap
   the key, wait 100 ms, release Alt. The delays give the host time to register
   the combination.
