@@ -48,6 +48,21 @@ uses its D2 connector. Leave the D1 connector empty so no two buttons share a pi
 > The shortcuts are the **Windows** Zoom defaults. On macOS the key
 > combinations differ, so you'd change the keys in the sketch (see below).
 
+### Enclosure
+
+[`enclosure/zoom_box.scad`](./enclosure/zoom_box.scad) is a parametric
+OpenSCAD case for the full-size shield and four buttons (MUTE, VIDEO, HAND,
+FULL) on a 12° sloped lid, with a USB-C cutout, a reset window, inlaid labels
+and an optional MUTE ring guard. Values marked `(MEASURE)` are estimates, so
+check them with calipers before printing. Export each part:
+
+```bash
+openscad -o base.stl   -D 'part="base"'   enclosure/zoom_box.scad
+openscad -o lid.stl    -D 'part="lid"'    enclosure/zoom_box.scad
+openscad -o labels.stl -D 'part="labels"' enclosure/zoom_box.scad
+openscad -o guard.stl  -D 'part="guard"'  enclosure/zoom_box.scad
+```
+
 ---
 
 ## Software setup
