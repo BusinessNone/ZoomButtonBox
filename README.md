@@ -53,8 +53,14 @@ uses its D2 connector. Leave the D1 connector empty so no two buttons share a pi
 [`enclosure/zoom_box.scad`](./enclosure/zoom_box.scad) is a parametric
 OpenSCAD case for the full-size shield and four buttons (MUTE, VIDEO, HAND,
 FULL) on a 12° sloped lid, with a USB-C cutout, a reset window, inlaid labels
-and an optional MUTE ring guard. Values marked `(MEASURE)` are estimates, so
-check them with calipers before printing. Export each part:
+and an optional MUTE ring guard.
+
+![Exploded enclosure render](./enclosure/render.png)
+
+Ready-to-slice STLs from the default values are in
+[`enclosure/stl/`](./enclosure/stl). Values marked `(MEASURE)` in the SCAD
+are estimates, so check them with calipers and re-export if they differ.
+Export each part:
 
 ```bash
 openscad -o base.stl   -D 'part="base"'   enclosure/zoom_box.scad

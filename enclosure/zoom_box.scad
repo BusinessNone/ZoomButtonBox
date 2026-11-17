@@ -338,7 +338,7 @@ if (part == "base") base();
 else if (part == "lid") to_print_lid() lid_world();
 else if (part == "labels") { if (label_mode == "inlay") to_print_lid() labels_world(); }
 else if (part == "guard") translate([0, 0, guard_h]) rotate([180, 0, 0]) guard_local();
-else {  // assembly, exploded 25 mm
+else if (part == "assembly") {  // exploded 25 mm
     color("dimgray") base();
     translate([0, 0, 25]) {
         color("gainsboro") lid_world();
