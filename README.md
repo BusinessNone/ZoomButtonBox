@@ -24,15 +24,20 @@ is pin `Dn` and SIG2 is pin `D(n+1)`.
 
 ### Default wiring
 
-Pin numbers are Arduino pin numbers, so `3` is XIAO pin D3. The four connectors
-below are the ones that don't share pins.
+Pin numbers are Arduino pin numbers, so `3` is XIAO pin D3. Use the full-size
+shield (25 × 58 mm) and **don't break off the extension section**: Full screen
+uses its D2 connector. Leave the D1 connector empty so no two buttons share a pin.
 
-| Function | Shield connector | LED pin | Button pin | Zoom shortcut sent |
+| Function | Shield connector (silkscreen) | LED pin | Button pin | Zoom shortcut sent |
 |----------|------------------|---------|------------|--------------------|
-| Mute / unmute audio | D0 | `0` | `1` | `Alt + A` |
-| Raise / lower hand | D2 | `2` | `3` | `Alt + Y` |
-| Start / stop video | I2C (SDA 4 / SCL 5) | `5` | `4` | `Alt + V` |
-| Enter / exit full screen | UART (TX 6 / RX 7) | `7` | `6` | `Alt + F` |
+| Mute / unmute audio | D0 (`1` / `0`) | `0` | `1` | `Alt + A` |
+| Raise / lower hand | UART (`TX 6` / `RX 7`) | `7` | `6` | `Alt + Y` |
+| Start / stop video | I2C (`SDA 4` / `SCL 5`) | `5` | `4` | `Alt + V` |
+| Enter / exit full screen | D2 (`3` / `2`), extension section | off (held LOW on `2`) | `3` | `Alt + F` |
+
+> Full screen has no LED by choice; the sketch holds its LED line LOW so it
+> stays dark. Don't use the D1 connector (`2` / `1`): it shares pin 1 with
+> Mute's button and pin 2 with Full screen's LED line.
 
 > The I2C and UART connectors are used as plain digital pins here, which is
 > fine as long as nothing else uses I2C or the hardware UART.
@@ -80,9 +85,9 @@ Pins, timing and the LED sentinel live in `#define`s at the top:
 #define DEBOUNCE_MS 30        // a pin must be stable this long to count
 
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   3
+#define BTN_RAISEHAND   6
 #define BTN_VIDEOTOGGLE 4
-#define BTN_FULLSCREEN  6
+#define BTN_FULLSCREEN  3
 
 #define NO_LED 99             // sentinel: "this button has no LED"
 ```

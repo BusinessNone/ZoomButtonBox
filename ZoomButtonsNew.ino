@@ -57,15 +57,23 @@
 // white wire (SIG2) is the button (LOW = pressed, pulled up). On a shield
 // connector labelled Dn, SIG1 is pin Dn and SIG2 is pin D(n+1).
 //
+// Full-size shield (25 x 58 mm): keep the extension section attached, as
+// Full screen uses its D2 connector. The D1 connector stays empty, so no two
+// buttons share a pin.
+//
 //   Function      Shield connector     LED pin   Button pin
-//   Mute          D0                   0         1
-//   Raise hand    D2                   2         3
-//   Video         I2C (SDA4/SCL5)      5         4
-//   Full screen   UART (TX6/RX7)       7         6
+//   Mute          D0   (pins 1/0)      0         1
+//   Full screen   D2   (pins 3/2)      off (2)   3
+//   Video         I2C  (SDA4/SCL5)     5         4
+//   Raise hand    UART (TX6/RX7)       7         6
+//
+// Full screen has no LED by choice. Its LED line (pin 2) is held LOW so the
+// module's LED stays dark instead of floating. Set LED_FULLSCREEN to 2 (and
+// remove it from DARK_PINS) to give it a working LED.
 #define BTN_MUTE        1
-#define BTN_RAISEHAND   3
+#define BTN_RAISEHAND   6
 #define BTN_VIDEOTOGGLE 4
-#define BTN_FULLSCREEN  6
+#define BTN_FULLSCREEN  3
 // Not implemented yet (left commented out):
 //#define BTN_GALLERVIEW
 //#define BTN_SPEAKERVIEW
@@ -74,9 +82,12 @@
 
 // Digital pin driving each button's indicator LED (NO_LED to disable).
 #define LED_MUTE        0
-#define LED_RAISEHAND   2
+#define LED_RAISEHAND   7
 #define LED_VIDEOTOGGLE 5
-#define LED_FULLSCREEN  7
+#define LED_FULLSCREEN  NO_LED   // no LED by choice; its line is held dark below
+
+// LED lines of connected modules that should stay off (driven LOW at boot).
+const uint8_t DARK_PINS[] = { 2 };   // Full screen module's LED
 
 // One row per button: its pin, its LED pin, and the key sent with Alt.
 // Keeping the three together means a button, its LED and its shortcut can
@@ -165,6 +176,9 @@ void resyncMuted(uint8_t i){
 //=========================================
 void setup() {
   Serial.begin(9600);   // Debug/serial-monitor output at 9600 baud
+
+  // Hold unused LED lines LOW so those modules' LEDs stay dark.
+  for (uint8_t p : DARK_PINS) { pinMode(p, OUTPUT); digitalWrite(p, LOW); }
 
   // First pass: light every LED and set each button pin to INPUT_PULLUP.
   // The 100 ms spacing gives a visible "walk" across the LEDs at startup.
